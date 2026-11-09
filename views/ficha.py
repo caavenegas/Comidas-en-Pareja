@@ -3,6 +3,7 @@ import pandas as pd
 import streamlit as st
 
 import db
+import ui
 
 ORDEN_CRITERIOS = ["Precio / calidad", "Sabor y presentación", "Entorno", "Atención", "Limpieza"]
 
@@ -13,23 +14,28 @@ def clp(valor) -> str:
 
 st.title("Ficha del restaurante")
 
+grupo = ui.selector_grupo("Grupo")
+ui.encabezado_grupo(grupo)
+gid = grupo["grupo_id"]
+
 modo = st.radio(
     "Calcular con",
     ["historico", "actual"],
     format_func=lambda m: "Histórico acumulado (todas las visitas)" if m == "historico"
-    else "Valoración actual (la última de cada uno)",
+    else "Valoración actual (la última de cada persona)",
     horizontal=True,
 )
 
 try:
-    ranking = pd.DataFrame(db.consulta("v_ranking_restaurante", {"modo": modo}, orden="restaurante"))
+    ranking = pd.DataFrame(
+        db.consulta("v_ranking_restaurante", {"modo": modo, "grupo_id": gid}, orden="restaurante"))
     detalle = {r["restaurante_id"]: r for r in db.restaurantes()}
 except Exception as e:
     st.error(db.mensaje_error(e))
     st.stop()
 
 if ranking.empty:
-    st.info("Todavía no hay restaurantes con valoraciones.")
+    st.info("Este grupo todavía no tiene restaurantes con valoraciones.")
     st.stop()
 
 opciones = {f"{r.restaurante} · {r.comuna}": int(r.restaurante_id) for r in ranking.itertuples()}
@@ -38,9 +44,10 @@ rid = opciones[eleccion]
 fila = ranking[ranking["restaurante_id"] == rid].iloc[0]
 
 try:
-    notas = pd.DataFrame(db.consulta("v_valoracion", {"restaurante_id": rid}))
+    notas = pd.DataFrame(db.consulta("v_valoracion", {"restaurante_id": rid, "grupo_id": gid}))
     criterios = pd.DataFrame(
-        db.consulta("v_criterio_persona_restaurante", {"restaurante_id": rid, "modo": modo})
+        db.consulta("v_criterio_persona_restaurante",
+                    {"restaurante_id": rid, "modo": modo, "grupo_id": gid})
     )
 except Exception as e:
     st.error(db.mensaje_error(e))
@@ -59,7 +66,10 @@ c[3].metric("Precio", fila["rango_precio"] if isinstance(fila["rango_precio"], s
 c[4].metric("Volverían", f"{fila['pct_volveria']:.0f}%")
 
 personas = notas[["persona", "color_hex"]].drop_duplicates()
-escala = alt.Scale(domain=personas["persona"].tolist(), range=personas["color_hex"].tolist())
+escala = alt.Scale(
+    domain=personas["persona"].tolist(),
+    range=[ui.color_seguro(c) for c in personas["color_hex"].tolist()],
+)
 
 st.markdown("**Notas por criterio**")
 st.altair_chart(
@@ -72,7 +82,7 @@ st.altair_chart(
         color=alt.Color("persona:N", scale=escala, legend=alt.Legend(title=None, orient="bottom")),
         tooltip=["persona", "criterio", alt.Tooltip("promedio:Q", format=".2f")],
     ),
-    use_container_width=True,
+    width="stretch",
 )
 
 notas["fecha"] = pd.to_datetime(notas["fecha_id"])
@@ -88,7 +98,7 @@ if notas["fecha"].nunique() > 1:
             tooltip=["persona", alt.Tooltip("fecha:T", title="Fecha"),
                      alt.Tooltip("nota_global:Q", format=".2f")],
         ),
-        use_container_width=True,
+        width="stretch",
     )
 
 if pd.notna(fila["latitud"]) and pd.notna(fila["longitud"]):

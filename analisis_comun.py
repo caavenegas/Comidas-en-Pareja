@@ -4,13 +4,14 @@ import pandas as pd
 import streamlit as st
 
 import db
+import ui
 
 ORDEN_CRITERIOS = ["Precio / calidad", "Sabor y presentación", "Entorno", "Atención", "Limpieza"]
 
 TEXTOS = {
     "actual": (
         "Valoración actual",
-        "Cuenta solo la **última valoración de cada uno** por restaurante. "
+        "Cuenta solo la **última valoración de cada persona** por restaurante. "
         "Si vuelven y cambian de opinión, la nota nueva reemplaza a la anterior.",
     ),
     "historico": (
@@ -28,7 +29,11 @@ def mostrar(modo: str) -> None:
     titulo, descripcion = TEXTOS[modo]
     st.title(titulo)
     st.caption(descripcion)
-    filtro = {"modo": modo}
+
+    grupo = ui.selector_grupo("Grupo a analizar")
+    ui.encabezado_grupo(grupo)
+    color_grupo = ui.color_seguro(grupo["color_hex"])
+    filtro = {"modo": modo, "grupo_id": grupo["grupo_id"]}
 
     def tabla(vista: str, **kw) -> pd.DataFrame:
         return pd.DataFrame(db.consulta(vista, filtro, **kw))
@@ -36,7 +41,7 @@ def mostrar(modo: str) -> None:
     try:
         resumen = db.consulta("v_resumen", filtro)
         if not resumen:
-            st.info("Aún no hay valoraciones. Registra la primera en **Nueva valoración**.")
+            st.info("Este grupo aún no tiene valoraciones. Registra la primera en **Nueva valoración**.")
             st.stop()
         resumen = resumen[0]
         ranking = tabla("v_ranking_restaurante", orden="posicion")
@@ -62,7 +67,7 @@ def mostrar(modo: str) -> None:
     top = ranking.head(10)
     st.altair_chart(
         alt.Chart(top)
-        .mark_bar()
+        .mark_bar(color=color_grupo)
         .encode(
             x=alt.X("nota_global:Q", scale=alt.Scale(domain=[0, 5]), title="Nota global"),
             y=alt.Y("restaurante:N", sort="-x", title=None),
@@ -73,7 +78,7 @@ def mostrar(modo: str) -> None:
             ],
         )
         .properties(height=max(120, 32 * len(top))),
-        use_container_width=True,
+        width="stretch",
     )
     vista_rank = ranking.rename(
         columns={
@@ -82,16 +87,21 @@ def mostrar(modo: str) -> None:
             "pct_volveria": "% volvería",
         }
     )[["#", "Restaurante", "Tipo", "Visitas", "Nota", "Gasto prom.", "Precio", "% volvería"]]
-    st.dataframe(vista_rank, hide_index=True, use_container_width=True)
+    st.dataframe(vista_rank, hide_index=True, width="stretch")
 
-    # ---------- entre ustedes dos ----------
-    st.subheader("Entre ustedes dos")
-    escala = alt.Scale(domain=personas["persona"].tolist(), range=personas["color_hex"].tolist())
+    # ---------- entre las personas del grupo ----------
+    st.subheader("Entre las personas del grupo")
+    escala = alt.Scale(
+        domain=personas["persona"].tolist(),
+        range=[ui.color_seguro(c) for c in personas["color_hex"].tolist()],
+    )
 
-    cols = st.columns(len(personas))
-    for col, (_, p) in zip(cols, personas.iterrows()):
-        col.metric(f"Nota promedio de {p['persona']}", f"{p['nota_global']:.2f}")
-        col.caption(f"{int(p['valoraciones'])} valoraciones · volvería {p['pct_volveria']:.0f}%")
+    filas_personas = [personas.iloc[i:i + 3] for i in range(0, len(personas), 3)]
+    for bloque in filas_personas:
+        cols = st.columns(3)
+        for col, (_, p) in zip(cols, bloque.iterrows()):
+            col.metric(f"Nota promedio de {p['persona']}", f"{p['nota_global']:.2f}")
+            col.caption(f"{int(p['valoraciones'])} valoraciones · volvería {p['pct_volveria']:.0f}%")
 
     st.altair_chart(
         alt.Chart(criterios)
@@ -104,15 +114,15 @@ def mostrar(modo: str) -> None:
                             legend=alt.Legend(title=None, orient="bottom")),
             tooltip=["persona", "criterio", alt.Tooltip("promedio:Q", format=".2f")],
         ),
-        use_container_width=True,
+        width="stretch",
     )
 
     if coincidencia and coincidencia[0]["salidas_compartidas"]:
         co = coincidencia[0]
         ayuda = (
-            "100% = notas idénticas. Compara las valoraciones vigentes de ambos en cada restaurante."
+            "100% = notas idénticas. Compara las valoraciones vigentes de las personas en cada restaurante."
             if modo == "actual"
-            else "100% = notas idénticas. Se calcula sobre las salidas que valoraron los dos."
+            else "100% = notas idénticas. Se calcula sobre las salidas que valoraron al menos dos personas."
         )
         m = st.columns(3)
         m[0].metric("Coincidencia", f"{co['indice_coincidencia']:.0f}%", help=ayuda)
@@ -122,20 +132,20 @@ def mostrar(modo: str) -> None:
         st.markdown("**¿En qué criterio se diferencian más?**")
         st.altair_chart(
             alt.Chart(discrepancia)
-            .mark_bar()
+            .mark_bar(color=color_grupo)
             .encode(
                 x=alt.X("discrepancia_prom:Q", title="Diferencia promedio (puntos)"),
                 y=alt.Y("criterio:N", sort="-x", title=None),
                 tooltip=["criterio", alt.Tooltip("discrepancia_prom:Q", format=".2f")],
             )
             .properties(height=180),
-            use_container_width=True,
+            width="stretch",
         )
 
         st.markdown("**Donde más se distanciaron**")
         desacuerdos = pares.head(5).rename(
             columns={"restaurante": "Restaurante", "fecha_id": "Fecha", "dif_global": "Diferencia"}
         )[["Restaurante", "Fecha", "Diferencia"]]
-        st.dataframe(desacuerdos, hide_index=True, use_container_width=True)
+        st.dataframe(desacuerdos, hide_index=True, width="stretch")
     else:
-        st.info("Cuando los dos valoren un mismo restaurante, aquí verán cuánto coinciden.")
+        st.info("Cuando al menos dos personas del grupo valoren un mismo restaurante, aquí verán cuánto coinciden.")
