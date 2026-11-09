@@ -8,17 +8,34 @@ import ui_restaurante
 
 st.title("Nueva valoración")
 
-grupo = ui.selector_grupo("¿Para qué grupo es esta valoración?")
-ui.encabezado_grupo(grupo)
-
 try:
+    grupos = db.mis_grupos()
     restaurantes = db.restaurantes()
     ocasiones = db.ocasiones()
 except Exception as e:
     st.error(db.mensaje_error(e))
     st.stop()
 
+if not grupos:
+    st.info(
+        "Aún no perteneces a ningún grupo. Crea uno en la sección **Grupos**, "
+        "o pide a un líder que te agregue con tu correo."
+    )
+    st.stop()
+
 s = st.session_state
+
+# Grupos donde se guardará la valoración (por defecto, el grupo que estabas viendo)
+nombres_grupo = {g["grupo_id"]: g["nombre"] for g in grupos}
+if "nueva_grupos" not in s:
+    activo = s.get("grupo_activo")
+    s["nueva_grupos"] = [activo if activo in nombres_grupo else grupos[0]["grupo_id"]]
+s["nueva_grupos"] = [g for g in s["nueva_grupos"] if g in nombres_grupo]   # por si saliste de alguno
+grupos_elegidos = st.multiselect(
+    "¿En qué grupos quieres guardar esta valoración?",
+    list(nombres_grupo), format_func=nombres_grupo.get, key="nueva_grupos",
+    help="Se guarda una copia en cada grupo que elijas, y cada grupo la ve en sus análisis.",
+)
 # Si se acaba de crear un restaurante desde la ventana emergente, queda elegido
 if "_rest_nuevo" in s:
     s["nueva_rest"] = s.pop("_rest_nuevo")
@@ -52,9 +69,10 @@ with st.form("valoracion"):
 if enviar:
     if rid is None:
         st.error("Elige un restaurante, o crea uno con el botón «Nuevo restaurante».")
+    elif not grupos_elegidos:
+        st.error("Elige al menos un grupo donde guardar la valoración.")
     else:
-        datos = {
-            "grupo_id": grupo["grupo_id"],
+        base = {
             "restaurante_id": rid,
             "fecha_id": fecha.isoformat(),
             "persona_id": db.persona()["persona_id"],
@@ -64,11 +82,14 @@ if enviar:
             "volveria_recomendaria": volveria,
             "comentario": comentario.strip() or None,
         }
+        filas = [{**base, "grupo_id": g} for g in grupos_elegidos]
         try:
-            db.guardar_valoracion(datos)
+            db.guardar_valoracion(filas)
         except Exception as e:
             st.error(db.mensaje_error(e))
         else:
+            lista = ", ".join(f"«{nombres_grupo[g]}»" for g in grupos_elegidos)
             st.success(
-                "¡Guardado! Si ya habías valorado este lugar ese día en este grupo, se actualizó tu nota."
+                f"¡Guardado en {lista}! Si ya habías valorado este lugar ese día en alguno de "
+                "esos grupos, se actualizó tu nota."
             )

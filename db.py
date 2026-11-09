@@ -139,8 +139,9 @@ def actualizar_restaurante(restaurante_id: int, datos: dict) -> None:
         raise PermissionError("Solo quien creó el restaurante puede editarlo.")
 
 
-def guardar_valoracion(datos: dict) -> None:
-    """Si ya valoraste ese restaurante ese día en ese grupo, actualiza tu valoración."""
+def guardar_valoracion(datos: dict | list[dict]) -> None:
+    """Guarda una valoración, o varias (una por grupo) en una sola operación: si falla, no se guarda ninguna.
+    Si ya valoraste ese restaurante ese día en un grupo, actualiza esa valoración."""
     sb().table("fact_valoracion").upsert(
         datos, on_conflict="grupo_id,restaurante_id,fecha_id,persona_id"
     ).execute()
