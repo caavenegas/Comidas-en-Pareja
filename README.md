@@ -1,6 +1,6 @@
 # Nuestros restaurantes
 
-App para registrar y valorar restaurantes en pareja. Streamlit + Supabase (PostgreSQL, modelo en estrella).
+App para registrar y valorar restaurantes en grupos. Streamlit + Supabase (PostgreSQL, modelo en estrella).
 
 ## Ejecutar en tu computador
 1. Instala Python 3.10 o superior.
