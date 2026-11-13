@@ -33,10 +33,18 @@ def encabezado_grupo(grupo: dict, tamano: str = "1.3rem") -> None:
     )
 
 
+def _es_url_web(valor) -> bool:
+    return isinstance(valor, str) and valor.strip().lower().startswith(("http://", "https://"))
+
+
 def avatar(p: dict, tam: int = 44) -> None:
-    if p.get("foto_url"):
-        st.image(p["foto_url"], width=tam)
-        return
+    """Foto de la persona; si no hay foto o el valor guardado no es un enlace válido, un círculo con su inicial."""
+    if _es_url_web(p.get("foto_url")):
+        try:
+            st.image(p["foto_url"].strip(), width=tam)
+            return
+        except Exception:
+            pass
     inicial = html.escape(nombre_visible(p)[:1].upper() or "?")
     color = color_seguro(p.get("color_hex"))
     st.markdown(
