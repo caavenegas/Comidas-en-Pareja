@@ -83,7 +83,7 @@ with tab_editar:
 # ---------- tipos ----------
 with tab_tipos:
     st.write(", ".join(tipo_ids) or "Aún no hay tipos.")
-    with st.form("nuevo_tipo", clear_on_submit=True):
+    with st.form("form_agregar_tipo", clear_on_submit=True):
         nuevo = st.text_input("Nuevo tipo")
         if st.form_submit_button("Agregar tipo"):
             if nuevo.strip():
